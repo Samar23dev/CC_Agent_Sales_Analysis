@@ -13,7 +13,7 @@ A Python-based system for collecting and analyzing credit card sales data, inclu
 
 1. Clone the repository:
 ```bash
-git clone <your-repository-url>
+git clone https://github.com/Samar23dev/CC_Agent_Sales_Analysis.git
 cd credit-card-sales
 ```
 
