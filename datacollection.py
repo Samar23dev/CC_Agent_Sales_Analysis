@@ -3,13 +3,41 @@ from faker import Faker
 import random
 from datetime import datetime, timedelta
 import uuid
+import json
+import os
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 # Initialize Faker
 fake = Faker()
 
-# MongoDB connection
-client = MongoClient('mongodb+srv://samarmittal59:Samar123@cluster0.raeompg.mongodb.net/')
-db = client['credit_card_sales']
+# MongoDB connection using environment variables
+MONGODB_URI = os.getenv('MONGODB_URI')
+DB_NAME = os.getenv('DB_NAME', 'credit_card_sales')
+
+if not MONGODB_URI:
+    raise ValueError("MongoDB URI not found in environment variables")
+
+client = MongoClient(MONGODB_URI)
+db = client[DB_NAME]
+
+def export_to_json(collection, filename):
+    """Export MongoDB collection to JSON file"""
+    # Create data directory if it doesn't exist
+    if not os.path.exists('data'):
+        os.makedirs('data')
+    
+    # Get all documents from collection
+    documents = list(collection.find({}, {'_id': 0}))  # Exclude MongoDB _id field
+    
+    # Write to JSON file
+    filepath = os.path.join('data', filename)
+    with open(filepath, 'w', encoding='utf-8') as f:
+        json.dump(documents, f, indent=4, ensure_ascii=False)
+    
+    print(f"Exported {len(documents)} records to {filepath}")
 
 def generate_card_id():
     """Generate a realistic credit card ID"""
@@ -167,40 +195,50 @@ def calculate_card_performance(location):
     return None
 
 def main():
-    # Clear existing collections
-    db.credit_cards.drop()
-    db.agents.drop()
-    db.sales.drop()
-    
-    # Generate and insert sample data
-    global credit_cards, agents
-    credit_cards = generate_credit_cards(15)  # Generate 15 credit cards
-    agents = generate_agents(30)  # Generate 30 agents
-    
-    # Insert sample data
-    db.credit_cards.insert_many(credit_cards)
-    db.agents.insert_many(agents)
-    
-    # Generate and insert random sales data
-    sales_data = generate_random_sales(200)  # Generate 2000 sales records
-    db.sales.insert_many(sales_data)
-    
-    # Example: Calculate best performing card in Mumbai
-    best_card = calculate_card_performance("Mumbai")
-    if best_card:
-        card_details = db.credit_cards.find_one({"card_id": best_card["_id"]})
-        print(f"\nBest performing card in Mumbai:")
-        print(f"Card Name: {card_details['name']}")
-        print(f"Approval Rate: {best_card['approval_rate']*100:.2f}%")
-        print(f"Average Commission: ₹{best_card['avg_commission']:.2f}")
-        print(f"Volume Sold: {best_card['volume_sold']}")
-        print(f"Final Score: {best_card['final_score']:.3f}")
+    try:
+        # Clear existing collections
+        db.credit_cards.drop()
+        db.agents.drop()
+        db.sales.drop()
         
-        # Print some statistics
-        print("\nDatabase Statistics:")
-        print(f"Total Credit Cards: {len(credit_cards)}")
-        print(f"Total Agents: {len(agents)}")
-        print(f"Total Sales Records: {len(sales_data)}")
+        # Generate and insert sample data
+        global credit_cards, agents
+        credit_cards = generate_credit_cards(15)  # Generate 15 credit cards
+        agents = generate_agents(30)  # Generate 30 agents
+        
+        # Insert sample data
+        db.credit_cards.insert_many(credit_cards)
+        db.agents.insert_many(agents)
+        
+        # Generate and insert random sales data
+        sales_data = generate_random_sales(2000)  # Generate 2000 sales records
+        db.sales.insert_many(sales_data)
+        
+        # Export collections to JSON files
+        export_to_json(db.credit_cards, 'credit_cards.json')
+        export_to_json(db.agents, 'agents.json')
+        export_to_json(db.sales, 'sales.json')
+        
+        # Example: Calculate best performing card in Mumbai
+        best_card = calculate_card_performance("Mumbai")
+        if best_card:
+            card_details = db.credit_cards.find_one({"card_id": best_card["_id"]})
+            print(f"\nBest performing card in Mumbai:")
+            print(f"Card Name: {card_details['name']}")
+            print(f"Approval Rate: {best_card['approval_rate']*100:.2f}%")
+            print(f"Average Commission: ₹{best_card['avg_commission']:.2f}")
+            print(f"Volume Sold: {best_card['volume_sold']}")
+            print(f"Final Score: {best_card['final_score']:.3f}")
+            
+            # Print some statistics
+            print("\nDatabase Statistics:")
+            print(f"Total Credit Cards: {len(credit_cards)}")
+            print(f"Total Agents: {len(agents)}")
+            print(f"Total Sales Records: {len(sales_data)}")
+    
+    except Exception as e:
+        print(f"An error occurred: {str(e)}")
+        raise
 
 if __name__ == "__main__":
     main()
