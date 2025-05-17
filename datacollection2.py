@@ -8,6 +8,7 @@ from collections import defaultdict
 import os
 from dotenv import load_dotenv
 import json
+import sys
 
 # Load environment variables
 load_dotenv()
@@ -15,15 +16,25 @@ load_dotenv()
 # Initialize Faker
 fake = Faker()
 
-# MongoDB connection using environment variables
-MONGODB_URI = os.getenv('MONGODB_URI')
-DB_NAME = os.getenv('DB_NAME', 'credit_card_sales')
-
-if not MONGODB_URI:
-    raise ValueError("MongoDB URI not found in environment variables. Please set it in your .env file.")
-
-client = MongoClient(MONGODB_URI)
-db = client[DB_NAME]
+# MongoDB connection settings for localhost
+try:
+    # Default to localhost if no URI is provided
+    MONGODB_URI = os.getenv('MONGODB_URI', 'mongodb://localhost:27017/')
+    DB_NAME = os.getenv('DB_NAME', 'credit_card_sales')
+    
+    # Connect to MongoDB with timeout
+    client = MongoClient(MONGODB_URI, serverSelectionTimeoutMS=5000)
+    # Test the connection
+    client.server_info()
+    db = client[DB_NAME]
+    print(f"Successfully connected to MongoDB at {MONGODB_URI}")
+except Exception as e:
+    print(f"Error connecting to MongoDB: {str(e)}")
+    print("Please make sure MongoDB is running on your local machine")
+    print("1. Check if MongoDB is installed")
+    print("2. Verify MongoDB service is running")
+    print("3. Default port 27017 is available")
+    sys.exit(1)
 
 # --- Global lists for generated data (populated in main) ---
 # These are made global for easier access in generate_random_sales
@@ -572,75 +583,102 @@ def display_top_cards(location_city, top_n=3):
 
 
 def main():
-    global credit_cards_list, agents_list # To assign generated data
-
-    run_data_generation = True # Set to False to skip regeneration and use existing DB data
+    """Main function to generate and analyze credit card sales data"""
+    global credit_cards_list, agents_list
 
     try:
+        run_data_generation = True  # Set to False to skip regeneration and use existing DB data
+
         if run_data_generation:
-            # Clear existing collections (optional, use with caution)
-            # print("Dropping existing collections...")
-            # db.credit_cards.drop()
-            # db.agents.drop()
-            # db.sales.drop()
-            # print("Collections dropped.")
+            try:
+                print("Dropping existing collections...")
+                db.credit_cards.drop()
+                db.agents.drop()
+                db.sales.drop()
+                print("Collections dropped successfully.")
+            except Exception as e:
+                print(f"Warning: Error dropping collections: {str(e)}")
+                print("Continuing with data generation...")
 
             # Generate and insert sample data
-            print("Generating data...")
-            credit_cards_list = generate_credit_cards(15)  # Generate 15 credit cards
-            agents_list = generate_agents(30)      # Generate 30 agents
+            print("\nGenerating data...")
+            try:
+                # Generate credit cards
+                credit_cards_list = generate_credit_cards(15)
+                if credit_cards_list:
+                    db.credit_cards.insert_many(credit_cards_list)
+                    print(f"Successfully inserted {len(credit_cards_list)} credit cards.")
+                else:
+                    raise ValueError("No credit cards were generated")
 
-            # Insert sample data
-            if credit_cards_list:
-                db.credit_cards.insert_many(credit_cards_list)
-                print(f"Inserted {len(credit_cards_list)} credit cards.")
-            if agents_list:
-                db.agents.insert_many(agents_list)
-                print(f"Inserted {len(agents_list)} agents.")
+                # Generate agents
+                agents_list = generate_agents(30)
+                if agents_list:
+                    db.agents.insert_many(agents_list)
+                    print(f"Successfully inserted {len(agents_list)} agents.")
+                else:
+                    raise ValueError("No agents were generated")
 
-            # Generate and insert random sales data
-            # Ensure credit_cards_list and agents_list are populated before calling this
-            sales_data = generate_random_sales(500)  # Generate 500 sales records
-            if sales_data:
-                db.sales.insert_many(sales_data)
-                print(f"Inserted {len(sales_data)} sales records.")
+                # Generate sales data
+                sales_data = generate_random_sales(500)
+                if sales_data:
+                    db.sales.insert_many(sales_data)
+                    print(f"Successfully inserted {len(sales_data)} sales records.")
+                else:
+                    raise ValueError("No sales data was generated")
 
-            # Export collections to JSON files
-            export_to_json('credit_cards', 'credit_cards.json')
-            export_to_json('agents', 'agents.json')
-            export_to_json('sales', 'sales.json')
+                # Export collections to JSON files
+                print("\nExporting data to JSON files...")
+                export_to_json('credit_cards', 'credit_cards.json')
+                export_to_json('agents', 'agents.json')
+                export_to_json('sales', 'sales.json')
+                print("Data export completed successfully.")
+
+            except Exception as e:
+                print(f"Error during data generation: {str(e)}")
+                sys.exit(1)
+
         else:
-            print("Skipping data generation. Using existing data in MongoDB.")
-            # If not generating, populate lists from DB for generate_random_sales if it were to be called
-            # or for other functions that might rely on these lists.
-            # However, calculate_card_performance queries DB directly, so these lists aren't strictly needed
-            # if generation is skipped and analysis is the only goal.
-            credit_cards_list = list(db.credit_cards.find({}))
-            agents_list = list(db.agents.find({}))
+            print("Using existing data from MongoDB...")
+            try:
+                credit_cards_list = list(db.credit_cards.find({}))
+                agents_list = list(db.agents.find({}))
+                if not credit_cards_list or not agents_list:
+                    raise ValueError("No existing data found in database")
+                print(f"Loaded {len(credit_cards_list)} credit cards and {len(agents_list)} agents.")
+            except Exception as e:
+                print(f"Error loading existing data: {str(e)}")
+                sys.exit(1)
 
-
-        # Setup database indexes (idempotent, safe to run multiple times)
+        # Setup database indexes
         print("\nSetting up database indexes...")
         setup_indexes()
 
-        # Example: Calculate best performing card in a specific city
-        target_city = "Mumbai" # Or pick one from your generated agent locations    
-        print(f"\nCalculating top 3 performing cards in {target_city}...")
+        # Calculate performance metrics
+        print("\nCalculating performance metrics...")
+        available_cities = list(set(agent['location'] for agent in agents_list))
+        if not available_cities:
+            raise ValueError("No cities found in agents data")
+            
+        target_city = available_cities[0]  # Use first available city
+        print(f"\nAnalyzing top performing cards in {target_city}...")
         display_top_cards(target_city, top_n=3)
 
-        print("--------------------------------")
-        # Print some statistics
+        # Print database statistics
         print("\n--- Database Statistics ---")
-        print(f"Total Credit Cards in DB: {db.credit_cards.count_documents({})}")
-        print(f"Total Agents in DB: {db.agents.count_documents({})}")
-        print(f"Total Sales Records in DB: {db.sales.count_documents({})}")
+        print(f"Total Credit Cards: {db.credit_cards.count_documents({})}")
+        print(f"Total Agents: {db.agents.count_documents({})}")
+        print(f"Total Sales Records: {db.sales.count_documents({})}")
 
-    except ValueError as ve:
-        print(f"Configuration Error: {str(ve)}")
     except Exception as e:
-        print(f"An unexpected error occurred: {str(e)}")
-        import traceback
-        traceback.print_exc() # For more detailed error info during development
+        print(f"\nAn unexpected error occurred: {str(e)}")
+        sys.exit(1)
+    finally:
+        try:
+            client.close()
+            print("\nMongoDB connection closed.")
+        except Exception as e:
+            print(f"Error closing MongoDB connection: {str(e)}")
 
 if __name__ == "__main__":
     main()
