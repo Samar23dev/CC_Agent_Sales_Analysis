@@ -57,14 +57,14 @@ log/
 .env.test.local
 .env.production.local
 
-# Data files
-data/
-*.json
-*.csv
-*.xlsx
-*.xls
-*.db
-*.sqlite3
+# # Data files
+# data/
+# *.json
+# *.csv
+# *.xlsx
+# *.xls
+# *.db
+# *.sqlite3
 
 # OS generated files
 .DS_Store

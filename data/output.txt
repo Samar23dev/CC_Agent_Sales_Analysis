@@ -1,0 +1,119 @@
+(venv) C:\Users\samar\Desktop\Datacollection>python datacollection2.py                                       
+Successfully connected to MongoDB at mongodb+srv://samarmittal59:Samar123@cluster0.raeompg.mongodb.net/
+Dropping existing collections...
+Collections dropped successfully.
+
+Generating data...
+Successfully inserted 15 credit cards.
+Successfully inserted 30 agents.
+Successfully inserted 500 sales records.
+
+Exporting data to JSON files...
+Exported 15 records from 'credit_cards' to data\credit_cards.json
+Exported 30 records from 'agents' to data\agents.json
+Exported 500 records from 'sales' to data\sales.json
+Data export completed successfully.
+
+Setting up database indexes...     
+Sales collection indexes created/ensured.
+Credit cards collection indexes created/ensured.
+Agents collection indexes created/ensured.
+
+Calculating performance metrics...
+
+Analyzing top performing cards in Chennai...
+
+===== TOP 3 PERFORMING CREDIT CARDS IN CHENNAI =====
+
+1. Rewards Plus Card
+   Card ID: CC100013
+   Final Score: 0.7245
+
+   Base Metrics:
+   - Approval Rate: 100.00%
+   - Average Commission: ₹3465.50
+   - Total Applications: 2
+   - Successful Sales: 2
+
+   Advanced Metrics:
+   - Recent Performance: 1.0000
+   - Demographic Fit: 0.5136
+   - Monthly Growth: 0.00%
+   - Consistency Score: 1.0000
+   - Profitability: ₹3465.50 per application
+
+   Card Features:
+   - Type: Rewards Plus Card
+   - Benefits: Lounge Access, Reward Points, Cashback
+   - Eligibility: Income > 1100000 per annum
+   - Joining Fee: ₹1999
+   - Annual Fee: ₹1999
+   - Interest Rate: 34.54%
+   - Reward Rate: 1% on travel
+
+   ---------------------------------------------------
+
+2. Travel Rewards Card
+   Card ID: CC100006
+   Final Score: 0.7162
+
+   Base Metrics:
+   - Approval Rate: 100.00%
+   - Average Commission: ₹3437.50
+   - Total Applications: 2
+   - Successful Sales: 2
+
+   Advanced Metrics:
+   - Recent Performance: 1.0000
+   - Demographic Fit: 0.4659
+   - Monthly Growth: 0.00%
+   - Consistency Score: 1.0000
+   - Profitability: ₹3437.50 per application
+
+   Card Features:
+   - Type: Travel Rewards Card
+   - Benefits: Fuel Surcharge Waiver, Roadside Assistance, Car Rental Discounts
+   - Eligibility: Income > 1100000 per annum
+   - Joining Fee: ₹0
+   - Annual Fee: ₹0
+   - Interest Rate: 19.34%
+   - Reward Rate: 1% on all purchases
+
+   ---------------------------------------------------
+
+3. Premium Rewards Card
+   Card ID: CC100002
+   Final Score: 0.6386
+
+   Base Metrics:
+   - Approval Rate: 100.00%
+   - Average Commission: ₹4700.00
+   - Total Applications: 1
+   - Successful Sales: 1
+
+   Advanced Metrics:
+   - Recent Performance: 1.0000
+   - Demographic Fit: 0.4239
+   - Monthly Growth: 0.00%
+   - Consistency Score: 0.0000
+   - Profitability: ₹4700.00 per application
+
+   Card Features:
+   - Type: Premium Rewards Card
+   - Benefits: Lost Card Protection
+   - Eligibility: Income > 1400000 per annum
+   - Joining Fee: ₹1999
+   - Annual Fee: ₹999
+   - Interest Rate: 15.85%
+   - Reward Rate: 1% on dining
+
+   ---------------------------------------------------
+
+--- Database Statistics ---
+Total Credit Cards: 15
+Total Agents: 30
+Total Sales Records: 500
+
+MongoDB connection closed.
+
+(venv) C:\Users\samar\Desktop\Datacollection>
