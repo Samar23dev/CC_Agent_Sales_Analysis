@@ -1,248 +1,74 @@
 """
-GroMo AI Sales Coach - Card Service
+GroMo AI Sales Coach - Agent Service
 
-This module provides services for analyzing card performance,
-recommending cards to agents, and comparing different cards.
+This module provides services for analyzing agent performance,
+generating insights, and creating agent dashboards.
 """
 
 import pandas as pd
 import numpy as np
+import base64
+from io import BytesIO
+import matplotlib.pyplot as plt
+import seaborn as sns
 
 from data.data_loader import DataLoader
 from utils.metrics import calculate_success_rate, calculate_avg_commission
+from utils.visualization import (
+    create_monthly_trend_chart, 
+    create_card_performance_chart, 
+    create_segment_performance_chart
+)
 
 
-class CardService:
-    """Service for card-related operations."""
+class AgentService:
+    """Service for agent-related operations."""
     
     def __init__(self):
-        """Initialize the Card Service."""
+        """Initialize the Agent Service."""
         self.data_loader = DataLoader()
     
-    def analyze_all_cards(self):
+    def analyze_performance(self, agent_id):
         """
-        Analyze performance metrics for all cards.
-        
-        Returns:
-            List of cards with performance metrics
-        """
-        # Load data
-        sales_data = self.data_loader.load_sales_data()
-        cards_data = self.data_loader.load_cards_data()
-        
-        if sales_data is None or cards_data is None:
-            return None
-        
-        # Calculate card performance metrics
-        card_metrics = sales_data.groupby('card_id').agg({
-            'sale_id': 'count',
-            'success_flag': 'sum',
-            'commission': 'sum'
-        }).reset_index()
-        
-        card_metrics = card_metrics.rename(columns={
-            'sale_id': 'total_applications',
-            'success_flag': 'successful_sales'
-        })
-        
-        # Calculate derived metrics
-        card_metrics['approval_rate'] = card_metrics.apply(
-            lambda row: calculate_success_rate(row['successful_sales'], row['total_applications']),
-            axis=1
-        )
-        
-        card_metrics['avg_commission'] = card_metrics.apply(
-            lambda row: calculate_avg_commission(row['commission'], row['successful_sales']),
-            axis=1
-        )
-        
-        # Add card details
-        result = card_metrics.merge(cards_data, on='card_id', how='left')
-        
-        # Sort by total commission
-        result = result.sort_values('commission', ascending=False)
-        
-        return result.to_dict('records')
-    
-    def recommend_cards(self, agent_id, limit=5):
-        """
-        Recommend cards for a specific agent based on their performance.
+        Analyze performance metrics for a specific agent.
         
         Args:
             agent_id: ID of the agent
-            limit: Maximum number of recommendations
             
         Returns:
-            List of recommended cards with explanations
+            Dictionary with agent performance metrics
         """
         # Load data
         sales_data = self.data_loader.load_sales_data()
+        agents_data = self.data_loader.load_agents_data()
         cards_data = self.data_loader.load_cards_data()
         
-        if sales_data is None or cards_data is None:
+        if sales_data is None:
             return None
         
-        # Get agent's sales
+        # Filter data for the specific agent
         agent_sales = sales_data[sales_data['agent_id'] == agent_id].copy()
         
-        # If agent has no sales, recommend based on overall performance
         if len(agent_sales) == 0:
-            return self._recommend_for_new_agent(limit)
-        
-        # Analyze agent's sales patterns
-        agent_card_performance = agent_sales.groupby('card_id').agg({
-            'sale_id': 'count',
-            'success_flag': 'sum',
-            'commission': 'sum'
-        }).reset_index()
-        
-        agent_card_performance = agent_card_performance.rename(columns={
-            'sale_id': 'total_sales',
-            'success_flag': 'successful_sales'
-        })
-        
-        agent_card_performance['success_rate'] = agent_card_performance.apply(
-            lambda row: calculate_success_rate(row['successful_sales'], row['total_sales']),
-            axis=1
-        )
-        
-        agent_card_performance['avg_commission'] = agent_card_performance.apply(
-            lambda row: calculate_avg_commission(row['commission'], row['successful_sales']),
-            axis=1
-        )
-        
-        # Calculate overall card performance
-        card_performance = sales_data.groupby('card_id').agg({
-            'sale_id': 'count',
-            'success_flag': 'sum',
-            'commission': 'sum'
-        }).reset_index()
-        
-        card_performance = card_performance.rename(columns={
-            'sale_id': 'total_sales',
-            'success_flag': 'successful_sales'
-        })
-        
-        card_performance['success_rate'] = card_performance.apply(
-            lambda row: calculate_success_rate(row['successful_sales'], row['total_sales']),
-            axis=1
-        )
-        
-        card_performance['avg_commission'] = card_performance.apply(
-            lambda row: calculate_avg_commission(row['commission'], row['successful_sales']),
-            axis=1
-        )
-        
-        # Add card details
-        card_performance = card_performance.merge(cards_data, on='card_id', how='left')
-        
-        # Identify agent's strengths
-        if 'customer_income' in agent_sales.columns:
-            # Create income segments
-            agent_sales['income_segment'] = pd.cut(
-                agent_sales['customer_income'],
-                bins=[0, 300000, 600000, 1000000, float('inf')],
-                labels=['Low', 'Medium', 'High', 'Very High']
-            )
-            
-            # Calculate success rate by income segment
-            segment_success = agent_sales.groupby('income_segment').agg({
-                'success_flag': ['count', 'mean']
-            })
-            
-            segment_success.columns = ['count', 'success_rate']
-            segment_success = segment_success.reset_index()
-            
-            # Get best income segments (min 3 sales, success rate > 50%)
-            best_segments = segment_success[
-                (segment_success['count'] >= 3) &
-                (segment_success['success_rate'] > 0.5)
-            ].sort_values('success_rate', ascending=False)
-            
-            best_segment_list = best_segments['income_segment'].tolist() if len(best_segments) > 0 else []
-        else:
-            best_segment_list = []
-        
-        # Agent's best employment types
-        if 'customer_employment' in agent_sales.columns:
-            employment_success = agent_sales.groupby('customer_employment').agg({
-                'success_flag': ['count', 'mean']
-            })
-            
-            employment_success.columns = ['count', 'success_rate']
-            employment_success = employment_success.reset_index()
-            
-            # Get best employment types (min 3 sales, success rate > 50%)
-            best_employment = employment_success[
-                (employment_success['count'] >= 3) &
-                (employment_success['success_rate'] > 0.5)
-            ].sort_values('success_rate', ascending=False)
-            
-            best_employment_list = best_employment['customer_employment'].tolist() if len(best_employment) > 0 else []
-        else:
-            best_employment_list = []
-        
-        # Calculate card fit score based on agent's strengths
-        card_performance['fit_score'] = self._calculate_card_fit_score(
-            card_performance,
-            agent_card_performance,
-            best_segment_list,
-            best_employment_list
-        )
-        
-        # Sort by fit score and get top recommendations
-        recommendations = card_performance.sort_values('fit_score', ascending=False).head(limit)
-        
-        # Format recommendations with explanations
-        result = []
-        for _, card in recommendations.iterrows():
-            # Generate explanation for this recommendation
-            explanation = self._generate_card_recommendation_explanation(
-                card,
-                agent_card_performance,
-                best_segment_list,
-                best_employment_list
-            )
-            
-            result.append({
-                'card_id': card['card_id'],
-                'name': card['name'],
-                'success_rate': card['success_rate'],
-                'avg_commission': card['avg_commission'],
-                'total_sales': card['total_sales'],
-                'benefits': card.get('benefits', []),
-                'fit_score': card['fit_score'],
-                'explanation': explanation
-            })
-        
-        return result
-    
-    def compare_cards(self, card_ids):
-        """
-        Compare multiple cards based on their performance and features.
-        
-        Args:
-            card_ids: List of card IDs to compare
-            
-        Returns:
-            Dictionary with comparison data
-        """
-        # Load data
-        sales_data = self.data_loader.load_sales_data()
-        cards_data = self.data_loader.load_cards_data()
-        
-        if cards_data is None:
             return None
+            
+        # Get agent info if available
+        agent_info = None
+        if agents_data is not None:
+            agent_row = agents_data[agents_data['agent_id'] == agent_id]
+            if len(agent_row) > 0:
+                agent_info = agent_row.iloc[0].to_dict()
         
-        # Filter cards data to include only the specified cards
-        comparison_cards = cards_data[cards_data['card_id'].isin(card_ids)].copy()
+        # Calculate overall performance metrics
+        total_sales = len(agent_sales)
+        successful_sales = agent_sales['success_flag'].sum() if 'success_flag' in agent_sales.columns else 0
+        success_rate = calculate_success_rate(successful_sales, total_sales)
+        total_commission = agent_sales['commission'].sum() if 'commission' in agent_sales.columns else 0
+        avg_commission = calculate_avg_commission(total_commission, successful_sales)
         
-        if len(comparison_cards) == 0:
-            return None
-        
-        # Get performance metrics if sales data is available
-        if sales_data is not None:
-            card_performance = sales_data.groupby('card_id').agg({
+        # Calculate performance by card
+        if 'card_id' in agent_sales.columns:
+            card_performance = agent_sales.groupby('card_id').agg({
                 'sale_id': 'count',
                 'success_flag': 'sum',
                 'commission': 'sum'
@@ -263,290 +89,329 @@ class CardService:
                 axis=1
             )
             
-            # Merge with comparison cards
-            comparison_cards = comparison_cards.merge(
-                card_performance[card_performance['card_id'].isin(card_ids)],
-                on='card_id',
-                how='left'
+            # Add card details if available
+            if cards_data is not None:
+                card_performance = card_performance.merge(
+                    cards_data[['card_id', 'name', 'type']],
+                    on='card_id',
+                    how='left'
+                )
+            
+            # Sort by total commission
+            card_performance = card_performance.sort_values('commission', ascending=False)
+            
+            card_performance_list = card_performance.to_dict('records')
+        else:
+            card_performance_list = []
+        
+        # Calculate monthly performance if date information is available
+        if 'date' in agent_sales.columns:
+            agent_sales['month_year'] = pd.to_datetime(agent_sales['date']).dt.strftime('%Y-%m')
+            
+            monthly_performance = agent_sales.groupby('month_year').agg({
+                'sale_id': 'count',
+                'success_flag': 'sum',
+                'commission': 'sum'
+            }).reset_index()
+            
+            monthly_performance = monthly_performance.rename(columns={
+                'sale_id': 'total_sales',
+                'success_flag': 'successful_sales'
+            })
+            
+            monthly_performance['success_rate'] = monthly_performance.apply(
+                lambda row: calculate_success_rate(row['successful_sales'], row['total_sales']),
+                axis=1
             )
             
-            # Fill NaN values with 0
-            for col in ['total_sales', 'successful_sales', 'success_rate', 'commission', 'avg_commission']:
-                if col in comparison_cards.columns:
-                    comparison_cards[col] = comparison_cards[col].fillna(0)
-        
-        # Extract common features for comparison
-        features = []
-        
-        # Basic card details
-        features.append({
-            'category': 'Basic Details',
-            'features': [
-                {'name': 'Card Name', 'values': comparison_cards['name'].tolist()},
-                {'name': 'Joining Fee', 'values': comparison_cards['joining_fee'].tolist() if 'joining_fee' in comparison_cards.columns else []},
-                {'name': 'Annual Fee', 'values': comparison_cards['annual_fee'].tolist() if 'annual_fee' in comparison_cards.columns else []},
-                {'name': 'Interest Rate', 'values': comparison_cards['interest_rate'].tolist() if 'interest_rate' in comparison_cards.columns else []}
-            ]
-        })
-        
-        # Benefits
-        if 'benefits' in comparison_cards.columns:
-            # Create a set of all unique benefits across all cards
-            all_benefits = set()
-            for benefits_list in comparison_cards['benefits']:
-                if isinstance(benefits_list, list):
-                    all_benefits.update(benefits_list)
+            monthly_performance['avg_commission'] = monthly_performance.apply(
+                lambda row: calculate_avg_commission(row['commission'], row['successful_sales']),
+                axis=1
+            )
             
-            # Create a feature row for each benefit
-            benefit_features = []
-            for benefit in sorted(all_benefits):
-                values = []
-                for benefits_list in comparison_cards['benefits']:
-                    if isinstance(benefits_list, list) and benefit in benefits_list:
-                        values.append('Yes')
-                    else:
-                        values.append('No')
-                        
-                benefit_features.append({'name': benefit, 'values': values})
+            # Sort by month_year
+            monthly_performance['date'] = pd.to_datetime(monthly_performance['month_year'] + '-01')
+            monthly_performance = monthly_performance.sort_values('date')
+            
+            monthly_performance_list = monthly_performance.to_dict('records')
+        else:
+            monthly_performance_list = []
+        
+        # Calculate performance by customer segment if customer data is available
+        segment_performance_list = []
+        
+        if 'customer_details' in agent_sales.columns:
+            # Extract customer income
+            if 'customer_income' in agent_sales.columns:
+                # Create income segments
+                agent_sales['income_segment'] = pd.cut(
+                    agent_sales['customer_income'],
+                    bins=[0, 300000, 600000, 1000000, float('inf')],
+                    labels=['Low', 'Medium', 'High', 'Very High']
+                )
                 
-            features.append({
-                'category': 'Benefits',
-                'features': benefit_features
-            })
-            
-        # Eligibility
-        features.append({
-            'category': 'Eligibility',
-            'features': [
-                {'name': 'Income Requirement', 'values': comparison_cards['eligibility'].tolist() if 'eligibility' in comparison_cards.columns else []}
-            ]
-        })
+                segment_performance = agent_sales.groupby('income_segment').agg({
+                    'sale_id': 'count',
+                    'success_flag': 'sum',
+                    'commission': 'sum'
+                }).reset_index()
+                
+                segment_performance = segment_performance.rename(columns={
+                    'sale_id': 'total_sales',
+                    'success_flag': 'successful_sales'
+                })
+                
+                segment_performance['success_rate'] = segment_performance.apply(
+                    lambda row: calculate_success_rate(row['successful_sales'], row['total_sales']),
+                    axis=1
+                )
+                
+                segment_performance['avg_commission'] = segment_performance.apply(
+                    lambda row: calculate_avg_commission(row['commission'], row['successful_sales']),
+                    axis=1
+                )
+                
+                segment_performance_list = segment_performance.to_dict('records')
         
-        # Rewards
-        features.append({
-            'category': 'Rewards',
-            'features': [
-                {'name': 'Reward Rate', 'values': comparison_cards['reward_rate'].tolist() if 'reward_rate' in comparison_cards.columns else []},
-                {'name': 'Credit Limit Range', 'values': comparison_cards['credit_limit_range'].tolist() if 'credit_limit_range' in comparison_cards.columns else []}
-            ]
-        })
-        
-        # Sales Performance
-        if sales_data is not None:
-            features.append({
-                'category': 'Sales Performance',
-                'features': [
-                    {'name': 'Total Applications', 'values': comparison_cards['total_sales'].tolist() if 'total_sales' in comparison_cards.columns else []},
-                    {'name': 'Success Rate', 'values': [f"{rate:.1%}" for rate in comparison_cards['success_rate'].tolist()] if 'success_rate' in comparison_cards.columns else []},
-                    {'name': 'Average Commission', 'values': [f"₹{comm:.0f}" for comm in comparison_cards['avg_commission'].tolist()] if 'avg_commission' in comparison_cards.columns else []}
-                ]
-            })
-            
-        # Compile comparison data
-        comparison = {
-            'cards': comparison_cards['name'].tolist() if 'name' in comparison_cards.columns else comparison_cards['card_id'].tolist(),
-            'card_ids': comparison_cards['card_id'].tolist(),
-            'features': features
+        # Build the result
+        result = {
+            'agent_info': agent_info,
+            'overall': {
+                'total_sales': total_sales,
+                'successful_sales': successful_sales,
+                'success_rate': success_rate,
+                'total_commission': total_commission,
+                'avg_commission': avg_commission
+            },
+            'card_performance': card_performance_list,
+            'monthly_performance': monthly_performance_list,
+            'segment_performance': segment_performance_list
         }
         
-        return comparison
-    
-    def _recommend_for_new_agent(self, limit=5):
-        """
-        Recommend cards for a new agent with no sales history.
-        
-        Args:
-            limit: Maximum number of recommendations
-            
-        Returns:
-            List of recommended cards with explanations
-        """
-        # Load data
-        sales_data = self.data_loader.load_sales_data()
-        cards_data = self.data_loader.load_cards_data()
-        
-        if sales_data is None or cards_data is None:
-            return None
-            
-        # Calculate card performance
-        card_performance = sales_data.groupby('card_id').agg({
-            'sale_id': 'count',
-            'success_flag': 'sum',
-            'commission': 'sum'
-        }).reset_index()
-        
-        card_performance = card_performance.rename(columns={
-            'sale_id': 'total_sales',
-            'success_flag': 'successful_sales'
-        })
-        
-        card_performance['success_rate'] = card_performance.apply(
-            lambda row: calculate_success_rate(row['successful_sales'], row['total_sales']),
-            axis=1
-        )
-        
-        card_performance['avg_commission'] = card_performance.apply(
-            lambda row: calculate_avg_commission(row['commission'], row['successful_sales']),
-            axis=1
-        )
-        
-        # Add card details
-        card_performance = card_performance.merge(cards_data, on='card_id', how='left')
-        
-        # Calculate a score based on success rate and commission
-        # For new agents, we prioritize cards with high success rates
-        card_performance['beginner_score'] = (
-            card_performance['success_rate'] * 0.7 + 
-            (card_performance['avg_commission'] / card_performance['avg_commission'].max()) * 0.3
-        )
-        
-        # Sort by beginner score and get top cards
-        top_cards = card_performance.sort_values('beginner_score', ascending=False).head(limit)
-        
-        # Format recommendations with explanations
-        result = []
-        for _, card in top_cards.iterrows():
-            result.append({
-                'card_id': card['card_id'],
-                'name': card['name'],
-                'success_rate': card['success_rate'],
-                'avg_commission': card['avg_commission'],
-                'total_sales': card['total_sales'],
-                'benefits': card.get('benefits', []),
-                'fit_score': card['beginner_score'],
-                'explanation': f"This card has a high approval rate of {card['success_rate']:.1%} and generates an average commission of ₹{card['avg_commission']:.0f}, making it an excellent choice for new partners to build confidence and experience."
-            })
-            
         return result
     
-    def _calculate_card_fit_score(self, card_performance, agent_card_performance, best_segments, best_employment_types):
+    def create_dashboard(self, agent_id):
         """
-        Calculate a fit score for each card based on agent's strengths.
+        Create a comprehensive dashboard for a specific agent.
         
         Args:
-            card_performance: DataFrame with overall card performance
-            agent_card_performance: DataFrame with agent's card performance
-            best_segments: List of agent's best performing income segments
-            best_employment_types: List of agent's best performing employment types
+            agent_id: ID of the agent
             
         Returns:
-            Series with fit scores for each card
+            Dictionary with performance data and visualizations
         """
-        # Initialize the score with base metrics
-        # Higher success rate and commission are better
-        card_performance['base_score'] = (
-            card_performance['success_rate'] * 0.4 + 
-            (card_performance['avg_commission'] / card_performance['avg_commission'].max()) * 0.6
-        )
+        # Get agent performance data
+        performance = self.analyze_performance(agent_id)
         
-        # Give bonus for cards the agent already sells well
-        if len(agent_card_performance) > 0:
-            # Create a lookup for agent's performance
-            agent_success_dict = dict(zip(agent_card_performance['card_id'], agent_card_performance['success_rate']))
-            agent_comm_dict = dict(zip(agent_card_performance['card_id'], agent_card_performance['avg_commission']))
-            
-            # Calculate agent performance bonus
-            def calc_agent_bonus(row):
-                card_id = row['card_id']
-                if card_id in agent_success_dict:
-                    agent_success = agent_success_dict[card_id]
-                    agent_comm = agent_comm_dict[card_id]
-                    
-                    # If agent is doing well with this card, give a bonus
-                    if agent_success > 0.5 and agent_comm > 0:
-                        return 0.2
-                    # If agent is doing poorly with this card, penalize
-                    elif agent_success < 0.3 and len(agent_card_performance) > 2:
-                        return -0.1
-                return 0
+        if performance is None:
+            return None
+        
+        # Create visualizations
+        charts = {}
+        
+        # Monthly trend chart
+        if performance['monthly_performance']:
+            try:
+                monthly_df = pd.DataFrame(performance['monthly_performance'])
+                fig = create_monthly_trend_chart(monthly_df)
                 
-            card_performance['agent_bonus'] = card_performance.apply(calc_agent_bonus, axis=1)
-        else:
-            card_performance['agent_bonus'] = 0
+                # Convert to base64 image
+                img_data = BytesIO()
+                fig.savefig(img_data, format='png', bbox_inches='tight')
+                img_data.seek(0)
+                img_base64 = base64.b64encode(img_data.read()).decode('utf-8')
+                plt.close(fig)
+                
+                charts['monthly_trend'] = img_base64
+            except Exception as e:
+                print(f"Error creating monthly trend chart: {str(e)}")
         
-        # Calculate fit score
-        card_performance['fit_score'] = card_performance['base_score'] + card_performance['agent_bonus']
+        # Card performance chart
+        if performance['card_performance']:
+            try:
+                card_df = pd.DataFrame(performance['card_performance'])
+                fig = create_card_performance_chart(card_df)
+                
+                # Convert to base64 image
+                img_data = BytesIO()
+                fig.savefig(img_data, format='png', bbox_inches='tight')
+                img_data.seek(0)
+                img_base64 = base64.b64encode(img_data.read()).decode('utf-8')
+                plt.close(fig)
+                
+                charts['card_performance'] = img_base64
+            except Exception as e:
+                print(f"Error creating card performance chart: {str(e)}")
         
-        # Normalize to 0-1 range
-        min_score = card_performance['fit_score'].min()
-        max_score = card_performance['fit_score'].max()
-        if max_score > min_score:
-            card_performance['fit_score'] = (card_performance['fit_score'] - min_score) / (max_score - min_score)
+        # Segment performance chart
+        if performance['segment_performance']:
+            try:
+                segment_df = pd.DataFrame(performance['segment_performance'])
+                fig = create_segment_performance_chart(segment_df, 'income_segment')
+                
+                # Convert to base64 image
+                img_data = BytesIO()
+                fig.savefig(img_data, format='png', bbox_inches='tight')
+                img_data.seek(0)
+                img_base64 = base64.b64encode(img_data.read()).decode('utf-8')
+                plt.close(fig)
+                
+                charts['segment_performance'] = img_base64
+            except Exception as e:
+                print(f"Error creating segment performance chart: {str(e)}")
         
-        return card_performance['fit_score']
+        # Generate insights
+        insights = self.generate_insights(agent_id)
+        
+        # Build dashboard
+        dashboard = {
+            'performance': performance,
+            'charts': charts,
+            'insights': insights
+        }
+        
+        return dashboard
     
-    def _generate_card_recommendation_explanation(self, card, agent_card_performance, best_segments, best_employment_types):
+    def generate_insights(self, agent_id):
         """
-        Generate an explanation for a card recommendation.
+        Generate personalized insights for a specific agent.
         
         Args:
-            card: Card data
-            agent_card_performance: DataFrame with agent's card performance
-            best_segments: List of agent's best performing income segments
-            best_employment_types: List of agent's best performing employment types
+            agent_id: ID of the agent
             
         Returns:
-            Explanation string
+            Dictionary with insights and recommendations
         """
-        card_id = card['card_id']
-        card_name = card['name']
-        success_rate = card['success_rate']
-        avg_commission = card['avg_commission']
+        # Get agent performance data
+        performance = self.analyze_performance(agent_id)
         
-        # Check if agent is already selling this card
-        agent_experience = None
-        if len(agent_card_performance) > 0:
-            agent_card = agent_card_performance[agent_card_performance['card_id'] == card_id]
-            if len(agent_card) > 0:
-                agent_success = agent_card['success_rate'].iloc[0]
-                agent_commission = agent_card['avg_commission'].iloc[0]
-                agent_experience = {
-                    'success_rate': agent_success,
-                    'avg_commission': agent_commission
-                }
+        if performance is None:
+            return None
         
-        # Generate explanation based on card's metrics and agent's experience
-        explanation_parts = []
+        # Load data for network-wide benchmarking
+        sales_data = self.data_loader.load_sales_data()
         
-        # Basic performance explanation
-        explanation_parts.append(
-            f"{card_name} has an approval rate of {success_rate:.1%} and generates an average commission of ₹{avg_commission:.0f} per successful sale."
-        )
+        if sales_data is None:
+            return None
         
-        # Agent's experience with this card
-        if agent_experience:
-            if agent_experience['success_rate'] >= 0.5:
-                explanation_parts.append(
-                    f"You've had success with this card, achieving a {agent_experience['success_rate']:.1%} approval rate."
-                )
-            elif agent_experience['success_rate'] < 0.3:
-                explanation_parts.append(
-                    f"While you've sold this card before, your approval rate of {agent_experience['success_rate']:.1%} suggests you might need to better qualify customers."
-                )
-            else:
-                explanation_parts.append(
-                    f"You have some experience with this card, with a {agent_experience['success_rate']:.1%} approval rate."
-                )
+        # Calculate network-wide metrics
+        network_total_sales = len(sales_data)
+        network_successful_sales = sales_data['success_flag'].sum() if 'success_flag' in sales_data.columns else 0
+        network_success_rate = calculate_success_rate(network_successful_sales, network_total_sales)
+        network_total_commission = sales_data['commission'].sum() if 'commission' in sales_data.columns else 0
+        network_avg_commission = calculate_avg_commission(network_total_commission, network_successful_sales)
         
-        # Suggestion based on card details
-        if 'joining_fee' in card and 'annual_fee' in card:
-            joining_fee = card['joining_fee']
-            annual_fee = card['annual_fee']
-            
-            if joining_fee == 0 and annual_fee == 0:
-                explanation_parts.append(
-                    "This card has no joining or annual fee, making it easy to pitch to price-sensitive customers."
-                )
-            elif joining_fee == 0:
-                explanation_parts.append(
-                    "With no joining fee, this card has a lower barrier to entry for new customers."
-                )
+        # Generate insights
+        strengths = []
+        areas_for_improvement = []
+        recommendations = []
         
-        # Benefits highlight
-        if 'benefits' in card and isinstance(card['benefits'], list) and len(card['benefits']) > 0:
-            top_benefits = card['benefits'][:2]
-            explanation_parts.append(
-                f"Highlight its key benefits like {' and '.join(top_benefits)} when pitching to customers."
+        # Compare success rate with network average
+        agent_success_rate = performance['overall']['success_rate']
+        if agent_success_rate > network_success_rate + 0.05:
+            strengths.append(
+                f"Your approval rate of {agent_success_rate:.1%} is above the network average of {network_success_rate:.1%}, indicating strong customer qualification skills."
+            )
+        elif agent_success_rate < network_success_rate - 0.05:
+            areas_for_improvement.append(
+                f"Your approval rate of {agent_success_rate:.1%} is below the network average of {network_success_rate:.1%}. Better pre-screening of customers could improve this metric."
             )
         
-        return " ".join(explanation_parts)
+        # Check average commission vs network
+        agent_avg_commission = performance['overall']['avg_commission']
+        if agent_avg_commission > network_avg_commission + 200:
+            strengths.append(
+                f"Your average commission of ₹{agent_avg_commission:.0f} is higher than the network average of ₹{network_avg_commission:.0f}, showing good focus on higher-value cards."
+            )
+        elif agent_avg_commission < network_avg_commission - 200:
+            areas_for_improvement.append(
+                f"Your average commission of ₹{agent_avg_commission:.0f} is below the network average of ₹{network_avg_commission:.0f}. Focusing on premium cards could increase your earnings."
+            )
+        
+        # Analyze card mix
+        card_performance = performance['card_performance']
+        if card_performance:
+            # Check if agent is too focused on a single card
+            top_card = card_performance[0]
+            top_card_share = top_card['total_sales'] / performance['overall']['total_sales']
+            
+            if top_card_share > 0.7 and len(card_performance) > 1:
+                areas_for_improvement.append(
+                    f"You're heavily focused on a single card type. Diversifying your product mix could increase your overall earnings."
+                )
+            
+            # Find best performing cards to recommend
+            best_cards = [
+                card for card in card_performance 
+                if card['success_rate'] >= 0.6 and 
+                card['total_sales'] >= 3 and 
+                card['avg_commission'] > agent_avg_commission
+            ]
+            
+            if best_cards:
+                for card in best_cards[:2]:
+                    recommendations.append(
+                        f"Increase focus on {card['name']}, which generates ₹{card['avg_commission']:.0f} average commission with {card['success_rate']:.1%} success rate."
+                    )
+            
+            # Find poorly performing cards
+            poor_cards = [
+                card for card in card_performance 
+                if card['success_rate'] < 0.4 and 
+                card['total_sales'] >= 5
+            ]
+            
+            if poor_cards:
+                for card in poor_cards[:2]:
+                    areas_for_improvement.append(
+                        f"{card['name']} has a low approval rate of {card['success_rate']:.1%}. Consider improving customer qualification or focusing on other products."
+                    )
+        
+        # Analyze monthly trends
+        monthly_performance = performance['monthly_performance']
+        if monthly_performance and len(monthly_performance) >= 2:
+            # Check if the agent has a positive or negative trend
+            recent_months = sorted(monthly_performance, key=lambda x: x['date'])[-3:]
+            
+            if recent_months[-1]['total_sales'] > recent_months[0]['total_sales'] * 1.1:
+                strengths.append(
+                    f"Your sales volume is growing, with {recent_months[-1]['total_sales']} applications in your most recent month compared to {recent_months[0]['total_sales']} three months ago."
+                )
+            elif recent_months[-1]['total_sales'] < recent_months[0]['total_sales'] * 0.9:
+                areas_for_improvement.append(
+                    f"Your sales volume has decreased from {recent_months[0]['total_sales']} applications three months ago to {recent_months[-1]['total_sales']} in your most recent month."
+                )
+        
+        # Analyze segment performance
+        segment_performance = performance['segment_performance']
+        if segment_performance:
+            # Find best performing segments
+            best_segments = [
+                segment for segment in segment_performance 
+                if segment['success_rate'] >= 0.6 and 
+                segment['total_sales'] >= 3
+            ]
+            
+            if best_segments:
+                best_segment = max(best_segments, key=lambda x: x['success_rate'])
+                recommendations.append(
+                    f"Focus on the {best_segment['income_segment']} income segment, where you have a {best_segment['success_rate']:.1%} approval rate."
+                )
+        
+        # Add generic recommendations if needed
+        if not recommendations:
+            recommendations.append(
+                "Use the AI Sales Coach tools to analyze each customer's profile before application to predict success probability."
+            )
+            recommendations.append(
+                "Review the sales scripts for your most successful card types to refine your pitching approach."
+            )
+        
+        # Build insights
+        insights = {
+            'strengths': strengths,
+            'areas_for_improvement': areas_for_improvement,
+            'recommendations': recommendations
+        }
+        
+        return insights
