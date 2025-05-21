@@ -539,7 +539,7 @@ for factor in prediction['key_factors']:
 4. **Expanded Product Coverage**: Support for more financial products
 5. **Community Learning**: Sharing strategies among partners
 
-## Made with passion By
-
-- [SATWIK RAI] - [SOLE OWNER AND DEVELOPER]
+## Developed By
+- [SAMAR MITTAL] - [DEVELOPER]
+- [SATWIK RAI] - [CO-DEVELOPER]
 
